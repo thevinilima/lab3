@@ -110,6 +110,7 @@ def get_pull_requests_for_repos(repos):
         cursor = None
         has_next_page = True
         repo_pr_map[repo_name_with_owner] = []
+        retry_count = 0
 
         while has_next_page and len(repo_pr_map[repo_name_with_owner]) < 300:
             query = query_template.replace("OWNER", owner).replace("NAME", name).replace("AFTER_CURSOR", f'"{cursor}"' if cursor else "null")
@@ -130,9 +131,21 @@ def get_pull_requests_for_repos(repos):
                 time.sleep(1)
 
             elif response.status_code == 502 or response.status_code == 504:
-                print(f"Received 502/504 timeout for repo {repo_name_with_owner}, retrying...")
-                time.sleep(2)
+                if retry_count < 50:
+                    print(f"Received 502/504 timeout for repo {repo_name_with_owner}, retrying...")
+                    retry_count += 1
+                    time.sleep(2)
+                else: break
+            elif response.status_code == 403 or response.status_code == 429:
+                if response.headers.get("x-ratelimit-remaining") == 0:
+                    restart_date = int(response.headers.get("x-ratelimit-reset") or time.time()) + 5
+                    print(f"Rate limit exceeded, script will resume in {restart_date - time.time()} seconds.")
+                    time.sleep(restart_date - time.time())
+                else:
+                    print(f"Received 403/429 rate limit, retrying...")
+                    time.sleep(2)
             else:
+                save_repos_and_prs_to_json(repos, repo_pr_map, "repos_and_prs_partial.json")
                 raise Exception(f"Query failed with status code {response.status_code}: {response.text}")
         count += 1
         print(f"Processed {count} repositories.")
@@ -161,26 +174,35 @@ def save_repos_and_prs_to_json(repos, repo_pr_map, json_filename):
         }
 
         for pr in pull_requests:
-            pr_node = pr['node']
+            pr_node = pr.get('node', {})
+
+            # Coalescing logic for fields, handling None cases
+            files_info = pr_node.get('files') or {}  # Fallback to empty dict if files is None
+            participants_info = pr_node.get('participants') or {}  # Fallback if participants is None
+            comments_info = pr_node.get('comments') or {}  # Fallback if comments is None
+            reviews_info = pr_node.get('reviews') or {}  # Fallback if reviews is None
+
             pr_data = {
-                'title': pr_node['title'],
-                'url': pr_node['url'],
-                'state': pr_node['state'],
-                'createdAt': pr_node['createdAt'],
-                'closedAt': pr_node['closedAt'],
-                'mergedAt': pr_node['mergedAt'],
-                'reviewCount': pr_node['reviews']['totalCount'],
-                'numberOfFiles': pr_node['files']['totalCount'],  # Number of files changed
-                'addedLines': pr_node['additions'],  # Number of added lines
-                'removedLines': pr_node['deletions'],  # Number of removed lines
-                'descriptionLength': len(pr_node['body']),  # Description length
-                'numberOfParticipants': pr_node['participants']['totalCount'],  # Number of participants
-                'numberOfComments': pr_node['comments']['totalCount'],  # Number of comments
+                'title': pr_node.get('title', ''),
+                'url': pr_node.get('url', ''),
+                'state': pr_node.get('state', ''),
+                'createdAt': pr_node.get('createdAt', ''),
+                'closedAt': pr_node.get('closedAt', None),
+                'mergedAt': pr_node.get('mergedAt', None),
+                'reviewCount': reviews_info.get('totalCount', 0),
+                'numberOfFiles': files_info.get('totalCount', 0),
+                'additions': pr_node.get('additions', 0),
+                'deletions': pr_node.get('deletions', 0),
+                'body': pr_node.get('body', ''),
+                'participantsCount': participants_info.get('totalCount', 0),
+                'commentsCount': comments_info.get('totalCount', 0)
             }
+
             repo_data['repository']['pullRequests'].append(pr_data)
 
         data.append(repo_data)
 
+    # Save the structured data to a JSON file
     with open(json_filename, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=4)
 

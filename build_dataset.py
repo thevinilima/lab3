@@ -33,6 +33,8 @@ def filter_pull_requests(input_filename, output_filename):
 
             # Check the time difference and review conditions
             if has_reviews and time_diff and time_diff >= timedelta(hours=1):
+                pr['descriptionSize'] = len(pr['body'])
+                del pr['body']
                 filtered_pull_requests.append(pr)
 
         # Only include repos with 100 or more filtered PRs
