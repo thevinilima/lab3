@@ -7,6 +7,7 @@ def filter_pull_requests(input_filename, output_filename):
         data = json.load(f)
 
     filtered_data = []
+    repos_names = []
 
     for repo in data:
         repo_name_with_owner = repo['repository']['nameWithOwner']
@@ -33,8 +34,6 @@ def filter_pull_requests(input_filename, output_filename):
 
             # Check the time difference and review conditions
             if has_reviews and time_diff and time_diff >= timedelta(hours=1):
-                pr['descriptionSize'] = len(pr['body'])
-                del pr['body']
                 filtered_pull_requests.append(pr)
 
         # Only include repos with 100 or more filtered PRs
@@ -48,10 +47,15 @@ def filter_pull_requests(input_filename, output_filename):
                 }
             }
             filtered_data.append(filtered_repo_data)
+            repos_names.append(repo_name_with_owner)
 
     # Save filtered data to a new JSON file
     with open(output_filename, 'w', encoding='utf-8') as f:
         json.dump(filtered_data, f, indent=4)
+
+    with open('repos_names.json', 'w', encoding='utf-8') as f:
+        json.dump(repos_names, f, indent=4)
+
 
 # Example usage
 if __name__ == "__main__":

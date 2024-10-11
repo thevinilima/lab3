@@ -193,7 +193,7 @@ def save_repos_and_prs_to_json(repos, repo_pr_map, json_filename):
                 'numberOfFiles': files_info.get('totalCount', 0),
                 'additions': pr_node.get('additions', 0),
                 'deletions': pr_node.get('deletions', 0),
-                'body': pr_node.get('body', ''),
+                'descriptionSize': len(pr_node.get('body', '')),
                 'participantsCount': participants_info.get('totalCount', 0),
                 'commentsCount': comments_info.get('totalCount', 0)
             }
